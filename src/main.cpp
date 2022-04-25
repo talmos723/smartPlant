@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
+//musct have adafruit included except the build fails
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 
