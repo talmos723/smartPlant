@@ -4,6 +4,8 @@
 //musct have adafruit included except the build fails
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
+#include <Wire.h>
+#include <BH1750.h>
 
 //8 digit 7 segment display
 const int MAX7219_Data_IN = 2;
@@ -25,6 +27,12 @@ const int rainSensor = 12;
 const int dhtPIN = 14;
 DHT dht(dhtPIN, DHT11);
 int tempOverHum = 0;
+
+//BH1750 light sensor
+TwoWire i2cLight;
+BH1750 lightSensor;
+const int sda = 3;
+const int scl = 1;
 
 /*// WiFi home
 const char *ssid = "torand-home3"; // Enter your WiFi name
@@ -82,6 +90,11 @@ void setup() {
     shift(0x0b, 0x07); //scan limit register - display digits 0 thru 7
     shift(0x0a, 0x0f); //intensity register - max brightness
     shift(0x09, 0xff); //decode mode register - CodeB decode all digits
+
+    //BH1750 setup
+    i2cLight.begin(sda, scl);
+    lightSensor.begin(BH1750::CONTINUOUS_HIGH_RES_MODE, 0x23, &i2cLight);
+
 
     //connectToWifi(50);
     //connectToMqtt(50);
@@ -147,7 +160,16 @@ void loop() {
             shift(0x08, 0x0c);
         }
         tempOverHum++;
-        if (tempOverHum >= 12) tempOverHum = 0;
+        if (tempOverHum >= 12) {
+            tempOverHum = 0;
+            float lux = lightSensor.readLightLevel();
+            if (lux < 5) shift(0x0a, 0x00);
+            else if (lux < 25) shift(0x0a, 0x04);
+            else if (lux < 150) shift(0x0a, 0x08);
+            else if (lux < 500) shift(0x0a, 0x0b);
+            else shift(0x0a, 0x0f);
+        }
+
     }
 
     delay(1000);
