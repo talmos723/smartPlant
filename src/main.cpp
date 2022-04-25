@@ -162,6 +162,7 @@ void loop() {
         tempOverHum++;
         if (tempOverHum >= 12) {
             tempOverHum = 0;
+            //measures the light level and adjust the seven segment displays brightness to the given 5 light zones
             float lux = lightSensor.readLightLevel();
             if (lux < 5) shift(0x0a, 0x00);
             else if (lux < 25) shift(0x0a, 0x04);
