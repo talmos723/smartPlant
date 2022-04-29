@@ -34,6 +34,9 @@ BH1750 lightSensor;
 const int sda = 3;
 const int scl = 1;
 
+//Water pump pin
+const int pump = 13;
+
 /*// WiFi home
 const char *ssid = "torand-home3"; // Enter your WiFi name
 const char *password = "der526MK_D3br3!3n";  // Enter WiFi password*/
@@ -58,6 +61,7 @@ const int minWaterLevelFromSensor = 11; //[cm] the distance from the sensor to t
 
 //functions
 int waterLevel();
+void pumpWater(int ms = 5000);
 float measureDistance();
 void shift(byte send_to_address, byte send_this_data);
 void writeSevenSegment(int num, int fromDigit, int toDigit);
@@ -69,6 +73,8 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length);
 void setup() {
     Serial.begin(115200);
     //Serial.println(WiFi.macAddress());
+
+    pinMode(pump, OUTPUT);
 
     pinMode(trigger, OUTPUT);
     pinMode(echo, INPUT);
@@ -110,6 +116,12 @@ void loop() {
     int humidity = dht.readHumidity();
     int soilMoisture = 100 - analogRead(analog)*100/1023;
     int raining = !digitalRead(rainSensor);
+
+
+    if (soilMoisture < 40 && soilMoisture > 5 && wLevel > 10) {
+        pumpWater();
+    }
+
 
     //Serial.read()
 
@@ -175,6 +187,32 @@ void loop() {
 
     delay(1000);
     client.loop();
+
+
+
+}
+
+void pumpWater(int ms) {
+    digitalWrite(pump, HIGH);
+    shift(0x01, 0x0e);
+    shift(0x02, 0x0f);
+    shift(0x03, 0x0f);
+    shift(0x04, 0x0f);
+    shift(0x05, 0x0f);
+    shift(0x06, 0x0f);
+    shift(0x07, 0x0f);
+    shift(0x08, 0x0f);
+    delay(ms);
+    digitalWrite(pump,LOW);
+    shift(0x01, 0x0f);
+    shift(0x02, 0x0f);
+    shift(0x03, 0x0f);
+    shift(0x04, 0x0f);
+    shift(0x05, 0x0f);
+    shift(0x06, 0x0f);
+    shift(0x07, 0x0f);
+    shift(0x08, 0x0f);
+    delay(ms);
 }
 
 int waterLevel() {
