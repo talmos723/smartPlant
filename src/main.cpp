@@ -6,6 +6,7 @@
 #include <DHT.h>
 #include <Wire.h>
 #include <BH1750.h>
+#include <string>
 
 //8 digit 7 segment display
 const int MAX7219_Data_IN = 2;
@@ -17,9 +18,11 @@ bool displayOn = true;
 const int trigger = 16;
 const int echo = 5;
 
-//Soil moisture
-const int analog = A0;
+//Rain - Soil moisture sensor activation pin
+const int rainMoistureActivation = 13;
 
+//Soil moisture
+const int soilMoistureSensor = A0;
 //Rain Sensor
 const int rainSensor = 12;
 
@@ -58,6 +61,16 @@ PubSubClient client(espClient);
 const int maxWaterLevelFromSensor = 1; //[cm] the distance from the sensor to top of the maximum water level (the tank's full water capacity)
 const int minWaterLevelFromSensor = 11; //[cm] the distance from the sensor to the bottom of the tank
 
+//Pot structure describes every measurable state of a pot
+struct PotState {
+    int wLevel = 0;
+    float temperature = 0.0f;
+    int humidity = 0;
+    int soilMoisture = 0;
+    int raining = 0;
+};
+
+PotState pot1;
 
 //functions
 int waterLevel();
@@ -65,10 +78,12 @@ void pumpWater(int ms = 5000);
 float measureDistance();
 void shift(byte send_to_address, byte send_this_data);
 void writeSevenSegment(int num, int fromDigit, int toDigit);
+void writeSevenSegment(float num, int fromDigit, int toDigit);
 void connectToWifi(int maxTries);
 void connectToMqtt(int maxTries);
 void setDiplay(bool newStatus);
 void onMqttMessage(char* topic, byte* payload, unsigned int length);
+void readSoilMoistureAndRain(PotState* pot);
 
 void setup() {
     Serial.begin(115200);
@@ -79,8 +94,8 @@ void setup() {
     pinMode(trigger, OUTPUT);
     pinMode(echo, INPUT);
 
-    pinMode(analog, INPUT);
-
+    pinMode(rainMoistureActivation, OUTPUT);
+    pinMode(soilMoistureSensor, INPUT);
     pinMode(rainSensor, INPUT);
 
     pinMode(MAX7219_Data_IN, OUTPUT);
@@ -107,73 +122,74 @@ void setup() {
 
     //Setup dht11
     dht.begin();
+
+    //init the rain and soil moisture
+    readSoilMoistureAndRain(&pot1);
 }
 
 void loop() {
     //Serial.println(WiFi.macAddress());
-    int wLevel = waterLevel();
-    int temperature = dht.readTemperature();
-    int humidity = dht.readHumidity();
-    int soilMoisture = 100 - analogRead(analog)*100/1023;
-    int raining = !digitalRead(rainSensor);
+    pot1.wLevel = waterLevel();
+    pot1.temperature = dht.readTemperature();
+    pot1.humidity = dht.readHumidity();
 
 
-    if (soilMoisture < 40 && soilMoisture > 5 && wLevel > 10) {
+    if (pot1.soilMoisture < 40 && pot1.soilMoisture > 5 && pot1.wLevel > 10) {
         pumpWater();
+        readSoilMoistureAndRain(&pot1);
     }
 
 
     //Serial.read()
 
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
+        client.loop();
         char buf1[30];
         char buf2[30];
         char buf3[30];
-        char buf4[30];
-        char buf5[30];
+
 
         buf1[0] = 0x01;
-        itoa(humidity, buf1, 10);
+        std::string s = std::to_string(pot1.humidity);
+        for (int i = 0; i < 10; i++) {
+            buf1[1+i] = s[i];
+        }
         strcat(buf1,"/esp8266/Humidity");
 
         buf2[0] = 0x01;
-        itoa(temperature, buf2, 10);
+        s = std::to_string(pot1.temperature);
+        for (int i = 0; i < 10; i++) {
+            buf2[1+i] = s[i];
+        }
         strcat(buf2,"/esp8266/Temperature");
 
         buf3[0] = 0x01;
-        itoa(wLevel, buf3, 10);
+        itoa(pot1.wLevel, buf3, 10);
         strcat(buf3,"/esp8266/WaterLevel");
-
-        buf4[0] = 0x01;
-        itoa(soilMoisture, buf4, 10);
-        strcat(buf4,"/esp8266/SoilMoisture");
-
-        buf5[0] = 0x01;
-        itoa(raining, buf5, 10);
-        strcat(buf5,"/esp8266/Rain");
 
         client.publish(topic, buf1);
         client.publish(topic, buf2);
         client.publish(topic, buf3);
-        client.publish(topic, buf4);
-        client.publish(topic, buf5);
+
+        if (tempOverHum >= 900) {
+            char buf4[30];
+            char buf5[30];
+            buf4[0] = 0x01;
+            itoa(pot1.soilMoisture, buf4, 10);
+            strcat(buf4, "/esp8266/SoilMoisture");
+
+            buf5[0] = 0x01;
+            itoa(pot1.raining, buf5, 10);
+            strcat(buf5, "/esp8266/Rain");
+            client.publish(topic, buf4);
+            client.publish(topic, buf5);
+        }
+
     }
 
 
     if (displayOn) {
-        if (tempOverHum < 6) {
-            writeSevenSegment(wLevel, 0, 3);
-            writeSevenSegment(temperature, 4, 7);
-        }
-        else {
-            writeSevenSegment(soilMoisture, 0, 3);
-            if (raining) shift(0x04, 0x0b);
-            writeSevenSegment(humidity, 4, 6);
-            shift(0x08, 0x0c);
-        }
-        tempOverHum++;
-        if (tempOverHum >= 12) {
-            tempOverHum = 0;
+        if (tempOverHum % 12 == 0) {
             //measures the light level and adjust the seven segment displays brightness to the given 5 light zones
             float lux = lightSensor.readLightLevel();
             if (lux < 5) shift(0x0a, 0x00);
@@ -182,16 +198,28 @@ void loop() {
             else if (lux < 500) shift(0x0a, 0x0b);
             else shift(0x0a, 0x0f);
         }
-
+        if (tempOverHum % 12 < 6) {
+            writeSevenSegment(pot1.wLevel, 0, 3);
+            writeSevenSegment(pot1.temperature, 4, 7);
+        }
+        else {
+            writeSevenSegment(pot1.soilMoisture, 0, 3);
+            if (pot1.raining) shift(0x04, 0x0b);
+            writeSevenSegment(pot1.humidity, 4, 6);
+            shift(0x08, 0x0c);
+        }
+        tempOverHum++;
+        //Reading rain sensor and soil moisture every 15 mins to expand their life span
+        if (tempOverHum >= 900) {
+            tempOverHum = 0;
+            readSoilMoistureAndRain(&pot1);
+        }
     }
 
     delay(1000);
-    client.loop();
-
-
-
 }
 
+//default value for ms is 5000
 void pumpWater(int ms) {
     digitalWrite(pump, HIGH);
     shift(0x01, 0x0e);
@@ -219,6 +247,15 @@ int waterLevel() {
     return 100 - (measureDistance() - maxWaterLevelFromSensor) * 100 / (minWaterLevelFromSensor - maxWaterLevelFromSensor);
 }
 
+void readSoilMoistureAndRain(PotState* pot) {
+    digitalWrite(rainMoistureActivation, HIGH);
+    delay(250);
+    pot->soilMoisture = 100 - analogRead(soilMoistureSensor) * 100 / 1023;
+    pot->raining = !digitalRead(rainSensor);
+    delay(100);
+    digitalWrite(rainMoistureActivation, LOW);
+}
+
 float measureDistance() {
     delay(100);
     digitalWrite(trigger, HIGH);
@@ -239,7 +276,7 @@ void shift(byte send_to_address, byte send_this_data) {
 }
 
 void writeSevenSegment(int num, int fromDigit, int toDigit) {
-    if (fromDigit < 0 || toDigit > 7) return;
+    if (fromDigit < 0 || toDigit > 7 || fromDigit > toDigit) return;
     int decRem = 0;
     if (num < 0) {
         shift(0x01 + toDigit, 0x0a);
@@ -250,6 +287,36 @@ void writeSevenSegment(int num, int fromDigit, int toDigit) {
         if (num >= 0) {
             decRem = num % 10;
             shift(0x01 + i, 0x00 + decRem);
+            num -= decRem;
+            if (num == 0) num = -1;
+            else num = num / 10;
+        }
+        else {
+            shift(0x01 + i, 0x0f);
+        }
+    }
+}
+
+void writeSevenSegment(float numf, int fromDigit, int toDigit) {
+    if (fromDigit < 0 || toDigit > 7 || fromDigit > toDigit) return;
+
+    int decimals = floor((toDigit - fromDigit + 1) / 3);
+    int num = numf * pow(10, decimals);
+    int decRem = 0;
+    if (num < 0) {
+        shift(0x01 + toDigit, 0x0a);
+        toDigit--;
+        num *= -1;
+    }
+    for(int i = fromDigit; i <= toDigit; i++) {
+        if (num >= 0) {
+            decRem = num % 10;
+            if (decimals > 0 && i == fromDigit + decimals) {
+                shift(0x01 + i, 0x80 + decRem);
+            }
+            else {
+                shift(0x01 + i, 0x00 + decRem);
+            }
             num -= decRem;
             if (num == 0) num = -1;
             else num = num / 10;
