@@ -46,11 +46,12 @@ struct PotState {
     int light = 0;
 };
 
-PotState pot1;
+PotState pot1, pot1_prev;
 
 //functions
 int waterLevel();
 void pumpWater(int ms = 5000);
+void sendData(bool withSoilmoistureAndRain = false);
 void readSoilMoistureAndRain();
 void prepareData(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6);
 
@@ -86,23 +87,35 @@ void setup() {
 
 void loop() {
     //Serial.println(WiFi.macAddress());
+    if (WiFi.status() == WL_CONNECTED && client.connected()) {
+        client.loop();
+    }
+    pot1_prev = pot1;
 
     pot1.wLevel = waterLevel();
     pot1.temperature = (int)(dht.readTemperature());
     pot1.humidity = (int)(dht.readHumidity());
     pot1.light = (int)(lightSensor.readLightLevel());
+
     //Reading rain sensor and soil moisture every 15 mins to expand their life span
     if (itaration >= 900) {
         itaration = 0;
         readSoilMoistureAndRain();
+        sendData(true);
+    }
+    else if (itaration % 300 == 0) {
+        sendData();
     }
 
-    //Serial.println(dht.readTemperature());
-    //Serial.println(pot1.humidity);
-    //Serial.println(pot1.light);
-    //Serial.println(pot1.wLevel);
-    //Serial.println(pot1.raining);
-    //Serial.println(pot1.soilMoisture);
+    if (
+        fabs(pot1.temperature - pot1_prev.temperature) / pot1_prev.temperature > 0.05 ||
+        fabs(pot1.humidity - pot1_prev.humidity) / pot1_prev.humidity > 0.05 ||
+        fabs(pot1.wLevel - pot1_prev.wLevel)  / pot1_prev.wLevel > 0.05 ||
+        fabs(pot1.light - pot1_prev.light) / pot1_prev.light > 0.05
+                ) {
+        sendData();
+    }
+
 
     //Watering if the soil moisture is low
     /*if (pot1.soilMoisture < 40 && pot1.soilMoisture > 5 && pot1.wLevel > 10) {
@@ -112,6 +125,13 @@ void loop() {
 
     //Serial.read()
 
+
+    itaration++;
+    delay(1000);
+}
+
+//withSoilmoistureAndRain false default
+void sendData(bool withSoilmoistureAndRain) {
     char buf1[50];
     char buf2[50];
     char buf3[50];
@@ -121,13 +141,12 @@ void loop() {
     prepareData(buf1, buf2, buf3, buf4, buf5, buf6);
 
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
-        client.loop();
         client.publish(topic, buf1);
         client.publish(topic, buf2);
         client.publish(topic, buf3);
         client.publish(topic, buf4);
 
-        if (itaration < 5) {
+        if (withSoilmoistureAndRain) {
             client.publish(topic, buf5);
             client.publish(topic, buf6);
         }
@@ -138,13 +157,11 @@ void loop() {
         Serial.println(buf3);
         Serial.println(buf4);
 
-        if (itaration < 5) {
+        if (withSoilmoistureAndRain) {
             Serial.println(buf5);
             Serial.println(buf6);
         }
     }
-    itaration++;
-    delay(1000);
 }
 
 void prepareData(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6) {
