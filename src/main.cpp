@@ -107,7 +107,7 @@ void loop() {
         sendData();
     }
 
-    //if temperature, humidity, water, light (higher than 100 lux) changes 5% sends status update
+    //if temperature, humidity, water, light level (higher than 100 lux) changes 5% sends status update
     //if light less than 100 only sends status update if changes more than 15 lux
     if (
         fabs(pot1.temperature - pot1_prev.temperature) / pot1_prev.temperature > 0.05 ||
