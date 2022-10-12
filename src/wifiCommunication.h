@@ -46,6 +46,7 @@ void connectToMqtt(int maxTries) {
     //MQTT
     if (WiFi.status() == WL_CONNECTED) {
         client.setServer(mqtt_broker, mqtt_port);
+        client.setKeepAlive(900);
         while (!client.connected() && tries < maxTries) {
             String client_id = "esp8266-client-";
             client_id += String(WiFi.macAddress());

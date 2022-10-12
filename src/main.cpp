@@ -110,7 +110,7 @@ void loop() {
     if (
         fabs(pot1.temperature - pot1_prev.temperature) / pot1_prev.temperature > 0.05 ||
         fabs(pot1.humidity - pot1_prev.humidity) / pot1_prev.humidity > 0.05 ||
-        fabs(pot1.wLevel - pot1_prev.wLevel)  / pot1_prev.wLevel > 0.05 ||
+        fabs(pot1.wLevel - pot1_prev.wLevel)  / pot1_prev.wLevel > 0.15 ||
         fabs(pot1.light - pot1_prev.light) / pot1_prev.light > 0.05
                 ) {
         sendData();
