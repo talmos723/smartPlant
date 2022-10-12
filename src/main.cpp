@@ -10,38 +10,40 @@
 #include "wifiCommunication.h"
 
 //Rain - Soil moisture sensor activation pin
-const int rainMoistureActivation = D7;
+const int rainMoistureActivation = D2;
 
 //Soil moisture
 const int soilMoistureSensor = A0;
 //Rain Sensor
-const int rainSensor = 12;
+const int rainSensor = D0;
 
 //DHT11 humidity and temperature sensor
-const int dhtPIN = 14;
+const int dhtPIN = D1;
 DHT dht(dhtPIN, DHT11);
-int tempOverHum = 0;
+
+int itaration = 0;
 
 //BH1750 light sensor
-/*TwoWire i2cLight;
+TwoWire i2cLight;
 BH1750 lightSensor;
-const int sda = 3;
-const int scl = 1;*/
+const int sda = D3;
+const int scl = D4;
 
 //Water pump pin
-const int pump = D8;
+const int pump = D5;
 
 //Water level
 const int maxWaterLevelFromSensor = 1; //[cm] the distance from the sensor to top of the maximum water level (the tank's full water capacity)
-const int minWaterLevelFromSensor = 11; //[cm] the distance from the sensor to the bottom of the tank
+const int minWaterLevelFromSensor = 12; //[cm] the distance from the sensor to the bottom of the tank
 
 //Pot structure describes every measurable state of a pot
 struct PotState {
     int wLevel = 0;
-    float temperature = 0.0f;
+    int temperature = 0;
     int humidity = 0;
     int soilMoisture = 0;
     int raining = 0;
+    int light = 0;
 };
 
 PotState pot1;
@@ -49,199 +51,157 @@ PotState pot1;
 //functions
 int waterLevel();
 void pumpWater(int ms = 5000);
-void readSoilMoistureAndRain(PotState* pot);
+void readSoilMoistureAndRain();
+void prepareData(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6);
 
 void setup() {
     Serial.begin(115200);
-    Serial.println(WiFi.macAddress());
+    //Serial.println(WiFi.macAddress());
 
     pinMode(pump, OUTPUT);
 
     pinMode(trigger, OUTPUT);
     pinMode(echo, INPUT);
-    
+
     pinMode(rainMoistureActivation, OUTPUT);
     pinMode(soilMoistureSensor, INPUT);
     pinMode(rainSensor, INPUT);
 
-    pinMode(MAX7219_Data_IN, OUTPUT);
-    pinMode(MAX7219_Chip_Select, OUTPUT);
-    pinMode(MAX7219_Clock, OUTPUT);
-
-    digitalWrite(MAX7219_Clock, HIGH);
-    delay(200);
-
-    //Setup of MAX7219 chip
-    shift(0x0f, 0x00); //display test register - test mode off
-    shift(0x0c, 0x01); //shutdown register - normal operation
-    shift(0x0b, 0x07); //scan limit register - display digits 0 thru 7
-    shift(0x0a, 0x0f); //intensity register - max brightness
-    shift(0x09, 0xff); //decode mode register - CodeB decode all digits
+    //initSevenSegment()
 
     //BH1750 setup
-    /*i2cLight.begin(sda, scl);
-    lightSensor.begin(BH1750::CONTINUOUS_HIGH_RES_MODE, 0x23, &i2cLight);*/
+    i2cLight.begin(sda, scl);
+    lightSensor.begin(BH1750::CONTINUOUS_HIGH_RES_MODE, 0x23, &i2cLight);
 
 
-    //connectToWifi(50);
-    //connectToMqtt(50);
+    connectToWifi(50);
+    connectToMqtt(50);
 
     //Setup dht11
     dht.begin();
 
     //init the rain and soil moisture
-    readSoilMoistureAndRain(&pot1);
+    readSoilMoistureAndRain();
 }
 
 void loop() {
     //Serial.println(WiFi.macAddress());
-    pot1.wLevel = (int)measureDistance();
-    writeSevenSegment(pot1.wLevel);
-    /*
-    pot1.temperature = dht.readTemperature();
-    pot1.humidity = (int)dht.readHumidity();
 
+    pot1.wLevel = waterLevel();
+    pot1.temperature = (int)(dht.readTemperature());
+    pot1.humidity = (int)(dht.readHumidity());
+    pot1.light = (int)(lightSensor.readLightLevel());
+    //Reading rain sensor and soil moisture every 15 mins to expand their life span
+    if (itaration >= 900) {
+        itaration = 0;
+        readSoilMoistureAndRain();
+    }
 
-    if (pot1.soilMoisture < 40 && pot1.soilMoisture > 5 && pot1.wLevel > 10) {
+    //Serial.println(dht.readTemperature());
+    //Serial.println(pot1.humidity);
+    //Serial.println(pot1.light);
+    //Serial.println(pot1.wLevel);
+    //Serial.println(pot1.raining);
+    //Serial.println(pot1.soilMoisture);
+
+    //Watering if the soil moisture is low
+    /*if (pot1.soilMoisture < 40 && pot1.soilMoisture > 5 && pot1.wLevel > 10) {
         pumpWater();
         readSoilMoistureAndRain(&pot1);
-    }
+    }*/
 
     //Serial.read()
 
+    char buf1[50];
+    char buf2[50];
+    char buf3[50];
+    char buf4[50];
+    char buf5[50];
+    char buf6[50];
+    prepareData(buf1, buf2, buf3, buf4, buf5, buf6);
+
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
         client.loop();
-        char buf1[30];
-        char buf2[30];
-        char buf3[30];
-
-
-        buf1[0] = 0x01;
-        itoa(pot1.humidity, &buf1[1], 10);
-        strcat(buf1,"/esp8266/Humidity");
-
-        buf2[0] = 0x01;
-        std::string s = std::to_string(pot1.temperature);
-        for (int i = 0; i < 10; i++) {
-            buf2[1+i] = s[i];
-        }
-        strcat(buf2,"/esp8266/Temperature");
-
-        buf3[0] = 0x01;
-        itoa(pot1.wLevel, &buf3[1], 10);
-        strcat(buf3,"/esp8266/WaterLevel");
-
         client.publish(topic, buf1);
         client.publish(topic, buf2);
         client.publish(topic, buf3);
+        client.publish(topic, buf4);
 
-        if (tempOverHum == 0) {
-            char buf4[30];
-            char buf5[30];
-            buf4[0] = 0x01;
-            itoa(pot1.soilMoisture, &buf4[1], 10);
-            strcat(buf4, "/esp8266/SoilMoisture");
-
-            buf5[0] = 0x01;
-            itoa(pot1.raining, &buf5[1], 10);
-            strcat(buf5, "/esp8266/Rain");
-            client.publish(topic, buf4);
+        if (itaration < 5) {
             client.publish(topic, buf5);
+            client.publish(topic, buf6);
         }
     }
     else {
-        char buf1[40];
-        char buf2[40];
-        char buf3[40];
-
-
-        buf1[0] = 0x01;
-        itoa(pot1.humidity, &buf1[1], 10);
-        strcat(buf1, "/esp8266/Humidity");
-
-        buf2[0] = 0x01;
-        std::string s = std::to_string(pot1.temperature);
-        for (int i = 0; i < 10; i++) {
-            buf2[1+i] = s[i];
-        }
-        strcat(buf2, "/esp8266/Temperature");
-
-        buf3[0] = 0x01;
-        itoa(pot1.wLevel, &buf3[1], 10);
-        strcat(buf3,"/esp8266/WaterLevel");
-
         Serial.println(buf1);
         Serial.println(buf2);
         Serial.println(buf3);
+        Serial.println(buf4);
 
-        if (tempOverHum == 0) {
-            char buf4[30];
-            char buf5[30];
-            buf4[0] = 0x01;
-            itoa(pot1.soilMoisture, &buf4[1], 10);
-            strcat(buf4, "/esp8266/SoilMoisture");
-
-            buf5[0] = 0x01;
-            itoa(pot1.raining, &buf5[1], 10);
-            strcat(buf5, "/esp8266/Rain");
-            Serial.println(buf4);
+        if (itaration < 5) {
             Serial.println(buf5);
+            Serial.println(buf6);
         }
     }
-
-
-    if (displayOn) {
-        /*if (tempOverHum % 12 == 0) {
-            //measures the light level and adjust the seven segment displays brightness to the given 5 light zones
-            float lux = lightSensor.readLightLevel();
-            if (lux < 5) shift(0x0a, 0x00);
-            else if (lux < 25) shift(0x0a, 0x04);
-            else if (lux < 150) shift(0x0a, 0x08);
-            else if (lux < 500) shift(0x0a, 0x0b);
-            else shift(0x0a, 0x0f);
-        }*//*
-        if (tempOverHum % 12 < 6) {
-            writeSevenSegment(pot1.wLevel, 0, 3);
-            writeSevenSegment(pot1.temperature, 4, 7);
-        }
-        else {
-            writeSevenSegment(pot1.soilMoisture, 0, 3);
-            if (pot1.raining) shift(0x04, 0x0b);
-            writeSevenSegment(pot1.humidity, 4, 6);
-            shift(0x08, 0x0c);
-        }
-        tempOverHum++;
-        //Reading rain sensor and soil moisture every 15 mins to expand their life span
-        if (tempOverHum >= 900) {
-            tempOverHum = 0;
-            readSoilMoistureAndRain(&pot1);
-        }
-    }*/
-
+    itaration++;
     delay(1000);
+}
+
+void prepareData(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6) {
+    itoa(pot1.humidity, buf1, 10);
+    strcat(buf1,"/esp8266/Humidity");
+
+    itoa(pot1.temperature, buf2, 10);
+    strcat(buf2, "/esp8266/Temperature");
+
+    itoa(pot1.wLevel, buf3, 10);
+    strcat(buf3, "/esp8266/WaterLevel");
+
+    itoa(pot1.light, buf4, 10);
+    strcat(buf4, "/esp8266/Light");
+
+    itoa(pot1.soilMoisture, buf5, 10);
+    strcat(buf5, "/esp8266/SoilMoisture");
+
+    itoa(pot1.raining, buf6, 10);
+    strcat(buf6, "/esp8266/Rain");
+}
+
+void prepareData2(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6) {
+    byte id = 0x0F;
+    buf1[0] = id;
+    itoa(pot1.humidity, &buf1[1], 10);
+    strcat(buf1,"/esp8266/Humidity");
+
+    buf2[0] = id;
+    std::string s = std::to_string(pot1.temperature);
+    for (int i = 0; i < 10; i++) {
+        buf2[1+i] = s[i];
+    }
+    strcat(buf2,"/esp8266/Temperature");
+
+    buf3[0] = id;
+    itoa(pot1.wLevel, &buf3[1], 10);
+    strcat(buf3,"/esp8266/WaterLevel");
+
+    buf4[0] = id;
+    itoa(pot1.light, &buf4[1], 10);
+    strcat(buf4,"/esp8266/Light");
+
+    buf5[0] = id;
+    itoa(pot1.soilMoisture, &buf5[1], 10);
+    strcat(buf5, "/esp8266/SoilMoisture");
+
+    buf6[0] = id;
+    itoa(pot1.raining, &buf6[1], 10);
+    strcat(buf6, "/esp8266/Rain");
 }
 
 //default value for ms is 5000
 void pumpWater(int ms) {
     digitalWrite(pump, HIGH);
-    shift(0x01, 0x0e);
-    shift(0x02, 0x0f);
-    shift(0x03, 0x0f);
-    shift(0x04, 0x0f);
-    shift(0x05, 0x0f);
-    shift(0x06, 0x0f);
-    shift(0x07, 0x0f);
-    shift(0x08, 0x0f);
     delay(ms);
     digitalWrite(pump,LOW);
-    shift(0x01, 0x0f);
-    shift(0x02, 0x0f);
-    shift(0x03, 0x0f);
-    shift(0x04, 0x0f);
-    shift(0x05, 0x0f);
-    shift(0x06, 0x0f);
-    shift(0x07, 0x0f);
-    shift(0x08, 0x0f);
     delay(ms);
 }
 
@@ -249,11 +209,11 @@ int waterLevel() {
     return 100 - (measureDistance() - maxWaterLevelFromSensor) * 100 / (minWaterLevelFromSensor - maxWaterLevelFromSensor);
 }
 
-void readSoilMoistureAndRain(PotState* pot) {
+void readSoilMoistureAndRain() {
     digitalWrite(rainMoistureActivation, HIGH);
     delay(250);
-    pot->soilMoisture = 100 - analogRead(soilMoistureSensor) * 100 / 1023;
-    pot->raining = !digitalRead(rainSensor);
+    pot1.soilMoisture = 100 - analogRead(soilMoistureSensor) * 100 / 1023;
+    pot1.raining = !digitalRead(rainSensor);
     delay(100);
     digitalWrite(rainMoistureActivation, LOW);
 }
@@ -263,7 +223,6 @@ void readSoilMoistureAndRain(PotState* pot) {
  * 0x01: tries to connect to the wifi (default settings)
  * 0x02: tries to connect to the mqtt broker (default settings)
  */
-
 void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     for (int i=0; i<length; i++) {
         Serial.print(payload[i]);

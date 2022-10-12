@@ -8,8 +8,8 @@
 #include <Arduino.h>
 
 //Ultra sonic distance sensor
-const int trigger = D0;
-const int echo = D1;
+const int trigger = D7;
+const int echo = D6;
 //#define WATERPROOFSENSOR
 
 #ifdef WATERPROOFSENSOR

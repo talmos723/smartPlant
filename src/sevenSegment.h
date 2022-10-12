@@ -8,16 +8,32 @@
 #include <Arduino.h>
 
 //8 digit 7 segment display
-const int MAX7219_Data_IN = 2;
-const int MAX7219_Chip_Select = 0;
-const int MAX7219_Clock = 4;
+const int MAX7219_Data_IN = D4;
+const int MAX7219_Chip_Select = D2;
+const int MAX7219_Clock = D3;
 bool displayOn = true;
 
 void shift(byte send_to_address, byte send_this_data) {
     digitalWrite(MAX7219_Chip_Select, LOW);
-    shiftOut(MAX7219_Data_IN, MAX7219_Clock, MSBFIRST, send_to_address);
-    shiftOut(MAX7219_Data_IN, MAX7219_Clock, MSBFIRST, send_this_data);
+    shiftOut(MAX7219_Data_IN, 0, MSBFIRST, send_to_address);
+    shiftOut(MAX7219_Data_IN, 0, MSBFIRST, send_this_data);
     digitalWrite(MAX7219_Chip_Select, HIGH);
+}
+
+void initSevenSegment() {
+    pinMode(MAX7219_Data_IN, OUTPUT);
+    pinMode(MAX7219_Chip_Select, OUTPUT);
+    pinMode(MAX7219_Clock, OUTPUT);
+
+    digitalWrite(MAX7219_Clock, HIGH);
+    delay(200);
+
+    //Setup of MAX7219 chip
+    shift(0x0f, 0x00); //display test register - test mode off
+    shift(0x0c, 0x01); //shutdown register - normal operation
+    shift(0x0b, 0x07); //scan limit register - display digits 0 thru 7
+    shift(0x0a, 0x0f); //intensity register - max brightness
+    shift(0x09, 0xff); //decode mode register - CodeB decode all digits
 }
 
 void writeSevenSegment(int num, int fromDigit = 0, int toDigit = 7) {
@@ -42,7 +58,7 @@ void writeSevenSegment(int num, int fromDigit = 0, int toDigit = 7) {
     }
 }
 
-void writeSevenSegment(float numf, int fromDigit, int toDigit) {
+void writeSevenSegment(float numf, int fromDigit = 0, int toDigit = 7) {
     if (fromDigit < 0 || toDigit > 7 || fromDigit > toDigit) return;
 
     int decimals = floor((toDigit - fromDigit + 1) / 3);

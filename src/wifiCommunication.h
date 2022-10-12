@@ -15,14 +15,14 @@ const char *ssid = "torand-home3"; // Enter your WiFi name
 const char *password = "der526MK_D3br3!3n";  // Enter WiFi password*/
 
 // WiFi college
-const char *ssid = "1701-SSatT_belsos"; // Enter your WiFi name
-const char *password = "sch1701wifi";  // Enter WiFi password
+const char *ssid = "1701-belsos"; // Enter your WiFi name
+const char *password = "sch1701belsos";  // Enter WiFi password
 
 // MQTT Broker
-const char *mqtt_broker = "152.66.183.67";
+const char *mqtt_broker = "10.152.69.0";
 const char *topic = "python/mqtt/almos723";
-const char *mqtt_username = "test";
-const char *mqtt_password = "teszt2";
+const char *mqtt_username = "viragcserep";
+const char *mqtt_password = "smartpot";
 const int mqtt_port = 1883;
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -56,7 +56,7 @@ void connectToMqtt(int maxTries) {
             delay(500);
         }
         if (client.connected()) {
-            client.setCallback(onMqttMessage);
+            //client.setCallback(onMqttMessage);
             client.subscribe(topic);
         }
     }
