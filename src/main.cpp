@@ -8,6 +8,7 @@
 #include "sevenSegment.h"
 #include "distanceSensor.h"
 #include "wifiCommunication.h"
+#include "timeManagement.h"
 
 //Rain - Soil moisture sensor activation pin
 const int rainMoistureActivation = D2;
@@ -81,12 +82,17 @@ void setup() {
     //Setup dht11
     dht.begin();
 
+    //time
+    timeClient.begin();
+
     //init the rain and soil moisture
     readSoilMoistureAndRain();
 }
 
 void loop() {
     //Serial.println(WiFi.macAddress());
+    timeClient.update();
+
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
         client.loop();
     }
@@ -142,8 +148,14 @@ void sendData(bool withSoilmoistureAndRain) {
     char buf5[50];
     char buf6[50];
     prepareData(buf1, buf2, buf3, buf4, buf5, buf6);
+    char ctime[70];
+    getDate(ctime);
+    strcat(ctime, "/esp8266/Time");
 
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
+
+        client.publish(topic, "BeginDataTransfer");
+        client.publish(topic, ctime);
         client.publish(topic, buf1);
         client.publish(topic, buf2);
         client.publish(topic, buf3);
@@ -153,8 +165,11 @@ void sendData(bool withSoilmoistureAndRain) {
             client.publish(topic, buf5);
             client.publish(topic, buf6);
         }
+        client.publish(topic, "EndDataTransfer");
     }
     else {
+        Serial.println("BeginDataTransfer");
+        Serial.println(ctime);
         Serial.println(buf1);
         Serial.println(buf2);
         Serial.println(buf3);
@@ -164,6 +179,7 @@ void sendData(bool withSoilmoistureAndRain) {
             Serial.println(buf5);
             Serial.println(buf6);
         }
+        Serial.println("EndDataTransfer");
     }
 }
 
