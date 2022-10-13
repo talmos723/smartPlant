@@ -20,7 +20,7 @@ char* getDay() {
     return daysOfTheWeek[timeClient.getDay()];
 }
 
-char* getDate(char* ctime) {
+void getDate(char* ctime) {
     char h[10];
     char m[10];
     char s[10];
@@ -34,7 +34,6 @@ char* getDate(char* ctime) {
     strcat(ctime, m);
     strcat(ctime, ":");
     strcat(ctime, s);
-    return ctime;
 }
 
 #endif //SMARTPLANT_TIMEMANAGEMENT_H

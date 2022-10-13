@@ -148,14 +148,13 @@ void sendData(bool withSoilmoistureAndRain) {
     char buf5[50];
     char buf6[50];
     prepareData(buf1, buf2, buf3, buf4, buf5, buf6);
-    char ctime[70];
-    getDate(ctime);
-    strcat(ctime, "/esp8266/Time");
+    //char timeString[100] = {0};
+    //getDate(timeString);
+    //strcat(timeString, "/esp8266/Time");
 
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
-
         client.publish(topic, "BeginDataTransfer");
-        client.publish(topic, ctime);
+        //client.publish(topic, timeString);
         client.publish(topic, buf1);
         client.publish(topic, buf2);
         client.publish(topic, buf3);
@@ -169,7 +168,7 @@ void sendData(bool withSoilmoistureAndRain) {
     }
     else {
         Serial.println("BeginDataTransfer");
-        Serial.println(ctime);
+        //Serial.println(timeString);
         Serial.println(buf1);
         Serial.println(buf2);
         Serial.println(buf3);
