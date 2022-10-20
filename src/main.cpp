@@ -8,7 +8,6 @@
 #include "sevenSegment.h"
 #include "distanceSensor.h"
 #include "wifiCommunication.h"
-#include "timeManagement.h"
 
 //Rain - Soil moisture sensor activation pin
 const int rainMoistureActivation = D2;
@@ -22,7 +21,7 @@ const int rainSensor = D0;
 const int dhtPIN = D1;
 DHT dht(dhtPIN, DHT11);
 
-int itaration = 0;
+int iteration = 0;
 
 //BH1750 light sensor
 TwoWire i2cLight;
@@ -52,7 +51,7 @@ PotState pot1, pot1_prev;
 //functions
 int waterLevel();
 void pumpWater(int ms = 5000);
-void sendData(bool withSoilmoistureAndRain = false);
+void sendData();
 void readSoilMoistureAndRain();
 void prepareData(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6);
 
@@ -81,17 +80,10 @@ void setup() {
 
     //Setup dht11
     dht.begin();
-
-    //time
-    timeClient.begin();
-
-    //init the rain and soil moisture
-    readSoilMoistureAndRain();
 }
 
 void loop() {
     //Serial.println(WiFi.macAddress());
-    timeClient.update();
 
     if (WiFi.status() == WL_CONNECTED && client.connected()) {
         client.loop();
@@ -104,12 +96,12 @@ void loop() {
     pot1.light = (int)(lightSensor.readLightLevel());
 
     //Reading rain sensor and soil moisture every 15 mins to expand their life span
-    if (itaration >= 900) {
-        itaration = 0;
+    if (iteration >= 900 || iteration == 0) {
+        iteration = 0;
         readSoilMoistureAndRain();
-        sendData(true);
+        sendData();
     }
-    else if (itaration % 300 == 0) {
+    else if (iteration % 300 == 0) {
         sendData();
     }
 
@@ -135,12 +127,11 @@ void loop() {
     //Serial.read()
 
 
-    itaration++;
+    iteration++;
     delay(1000);
 }
 
-//withSoilmoistureAndRain false default
-void sendData(bool withSoilmoistureAndRain) {
+void sendData() {
     char buf1[50];
     char buf2[50];
     char buf3[50];
@@ -159,11 +150,8 @@ void sendData(bool withSoilmoistureAndRain) {
         client.publish(topic, buf2);
         client.publish(topic, buf3);
         client.publish(topic, buf4);
-
-        if (withSoilmoistureAndRain) {
-            client.publish(topic, buf5);
-            client.publish(topic, buf6);
-        }
+        client.publish(topic, buf5);
+        client.publish(topic, buf6);
         client.publish(topic, "EndDataTransfer");
     }
     else {
@@ -173,11 +161,8 @@ void sendData(bool withSoilmoistureAndRain) {
         Serial.println(buf2);
         Serial.println(buf3);
         Serial.println(buf4);
-
-        if (withSoilmoistureAndRain) {
-            Serial.println(buf5);
-            Serial.println(buf6);
-        }
+        Serial.println(buf5);
+        Serial.println(buf6);
         Serial.println("EndDataTransfer");
     }
 }
