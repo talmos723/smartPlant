@@ -8,6 +8,7 @@
 #include "sevenSegment.h"
 #include "distanceSensor.h"
 #include "wifiCommunication.h"
+#include "pump.h"
 
 //Rain - Soil moisture sensor activation pin
 const int rainMoistureActivation = D2;
@@ -29,12 +30,9 @@ BH1750 lightSensor;
 const int sda = D3;
 const int scl = D4;
 
-//Water pump pin
-const int pump = D5;
-
 //Water level
 const int maxWaterLevelFromSensor = 1; //[cm] the distance from the sensor to top of the maximum water level (the tank's full water capacity)
-const int minWaterLevelFromSensor = 12; //[cm] the distance from the sensor to the bottom of the tank
+const int minWaterLevelFromSensor = 18; //[cm] the distance from the sensor to the bottom of the tank
 
 //Pot structure describes every measurable state of a pot
 struct PotState {
@@ -50,7 +48,6 @@ PotState pot1, pot1_prev;
 
 //functions
 int waterLevel();
-void pumpWater(int ms = 5000);
 void sendData();
 void readSoilMoistureAndRain();
 void prepareData(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, char* buf6);
@@ -217,14 +214,6 @@ void prepareData2(char* buf1, char* buf2, char* buf3, char* buf4, char* buf5, ch
     strcat(buf6, "/esp8266/Rain");
 }
 
-//default value for ms is 5000
-void pumpWater(int ms) {
-    digitalWrite(pump, HIGH);
-    delay(ms);
-    digitalWrite(pump,LOW);
-    delay(ms);
-}
-
 int waterLevel() {
     return 100 - (measureDistance() - maxWaterLevelFromSensor) * 100 / (minWaterLevelFromSensor - maxWaterLevelFromSensor);
 }
@@ -236,44 +225,4 @@ void readSoilMoistureAndRain() {
     pot1.raining = !digitalRead(rainSensor);
     delay(100);
     digitalWrite(rainMoistureActivation, LOW);
-}
-
-/*first byte:
- * 0x00: prints the following bytes as int to the seven segment display for 0.5s
- * 0x01: tries to connect to the wifi (default settings)
- * 0x02: tries to connect to the mqtt broker (default settings)
- */
-void onMqttMessage(char* topic, byte* payload, unsigned int length) {
-    for (int i=0; i<length; i++) {
-        Serial.print(payload[i]);
-        Serial.print(", ");
-    }
-    Serial.println();
-    if (length < 2 || payload[0] == 0x01) return;
-    switch(payload[1]) {
-        case 0x00:
-            for (int i = 2; i < length; i++) {
-                writeSevenSegment((int)payload[i], 0, 6);
-                shift(0x08, 0x0e);
-                delay(3000);
-            }
-            break;
-
-        case 0x01:
-            connectToWifi(50);
-            break;
-
-        case 0x02:
-            connectToMqtt(50);
-            break;
-        case 0x03:
-            setDiplay(true);
-            break;
-        case 0x04:
-            setDiplay(false);
-            break;
-
-
-        default: break;
-    }
 }
